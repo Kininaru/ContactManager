@@ -1,3 +1,9 @@
+/*
+ * Contact manager designed by Kininaru as a course design.
+ * You can use any part of these codes freely, but not for your own course design, tks.
+ * time: 2020/02/21 22:04
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +19,7 @@ typedef struct contact {
     char name[15];
     int sex;
     char classInfo[50];
-    int duty;//1 ?? 2 ?? 0 ?
+    int duty;
     char phoneNumber[12];
     char email[31];
     Property other;
@@ -21,12 +27,13 @@ typedef struct contact {
 
 //string tools
 int strToInt(char *str);
-void strcut(char *dest, char *source, int start, int over);
+int emailCheck(char *email);
 
 //system & ui
 void showMainMenu();
 void error(int n);
-int cmdInterpreter(char *cmd);
+int cmdInterpreter(char cmd[][100], char source[]);
+int cmdInterpreter0(char *cmd);
 void printContactInfo(Contact buf);
 void showEditHelpMenu();
 
@@ -46,188 +53,187 @@ void contactEditor(Contact *buf);
 void propertyEditor(Property *other);
 
 int main() {
-    int contactNumber=0, number;
-    char cmd[100], str[100];
-    Contact *list, *more, buf;
-    FILE *db=fopen("Contact.db","a+");
+    char cmd[10][100], strbuf[1000];
+    int argc, contactNum, intBuf;
+    FILE *db;
+    Contact *list, *newList;
+
+    db = fopen("Contact.db", "a+");
     fclose(db);
 
-    //load from file
-    printf("Loading from file...\n");
-    fopen("Contact.db","r");
-    list = loadFromFile(db,&contactNumber);
-    fclose(db);
+    printf("Loading contacts from file...");
+    db = fopen("Contact.db", "r");
+    list = loadFromFile(db, &contactNum);
     if (list == 0) {
         error(1);
-        exit(1);
+        fclose(db);
+        return 1;
     }
-    printf("Loading finished. Total: %d contacts.\n",contactNumber);
+    fclose(db);
+    printf("Loading finished.\nTotal %d contact(s).\nNow input commands, use \"help\" for help.", contactNum);
 
-    printf("Input command. Use \"help\" for help.\n");//1
+    Command:
+    printf("\ncmd>");
+    gets(strbuf);
+    argc = cmdInterpreter(cmd, strbuf);
+    if (argc == 0)
+        goto Command;
 
-    command:
-    printf("cmd>");
-    label1:
-    gets(cmd);
-    if (cmd[0] == '\n') {
-        number=0;
-        while (cmd[number] != 0) {
-            cmd[number] = cmd[number+1];
-            number++;
-        }
-    }
-    if (strcmp(cmd,"") == 0)
-        goto label1;
-
-    switch (cmdInterpreter(cmd)) {
+    switch (cmdInterpreter0(cmd[0])) {
         case 0:
+            //exit
             printf("Saving to file...");
-            db=fopen("Contact.db","w");
-            saveToFile(db,list,contactNumber);
+            db = fopen("Contact.db", "w");
+            saveToFile(db, list, contactNum);
             fclose(db);
             free(list);
-            printf("Finished.\n");
+            printf("Finished.\nExiting...\n");
             break;
         case 1:
+            //help
             showMainMenu();
-            goto command;
-            break;
+            goto Command;
         case 2:
-            more = (Contact*)realloc(list, sizeof(Contact)*(contactNumber+1));
-            if (more == 0) {
+            //add
+            newList = (Contact*)realloc(list, sizeof(Contact) * (contactNum + 1));
+            if (newList == 0) {
                 error(1);
-            } else {
-                list=more;
-                buf=getContactFromKeyboard();
-                contactNumber++;
-                insertContactInNumberOrder(list, buf, contactNumber);
+                printf("Failed.\n");
+                goto Command;
             }
-            goto command;
-            break;
+            list = newList;
+            contactNum++;
+            insertContactInNumberOrder(list, getContactFromKeyboard(), contactNum);
+            printf("Added.\n");
+            goto Command;
         case 3:
-            for (number = 5; cmd[number] != ' ' && cmd[number] != '\n' && cmd[number] != 0; ++number) ;
-            strcut(str, cmd, 5, number);
-            number=strToInt(str);
-            for (int i = 0; i < contactNumber; ++i) {
-                if (list[i].number == number) {
+            //edit
+            if (argc != 2) {
+                printf("Syntax: edit [contactNumber]\n");
+                goto Command;
+            }
+            intBuf = strToInt(cmd[1]);
+            printf("Finding this contact...");
+            for (int i = 0; i < contactNum; ++i) {
+                if (list[i].number == intBuf) {
+                    printf("Found.\nEditing...");
                     contactEditor(&list[i]);
-                    goto command;
+                    printf("Finished.\n");
+                    goto Command;
                 }
             }
-            error(3);
-            goto command;
-            break;
+            printf("Contact not found.\n");
+            goto Command;
         case 4:
             //del
-            switch (cmd[5]) {
-               case 'i':
-                   for (number = 7; cmd[number] != ' ' && cmd[number] != 0 && cmd[number] != '\n'; ++number) ;
-                   strcut(str, cmd, 7, number);
-                   number=strToInt(str);
-                   printf("Finding this contact...");
-                  for (int i = 0; i < contactNumber; ++i) {
-                      if (list[i].number == number) {
-                          printf("Found, deleting...");
-                            list=delContact(list,contactNumber,i);
-                            contactNumber--;
-                            printf("Finished.\n");
-                            goto command;
-                       }
-                    }
-                    error(3);
-                    break;
-               case 'n':
-                    for (number = 7; cmd[number] != ' ' && cmd[number] != '\n' && cmd[number] != 0; ++number) ;
-                    strcut(str, cmd, 7, number);
+            if (argc != 3) {
+                printf("Syntax: del [-i|-n] [moreInfo]\n");
+                goto Command;
+            }
+            switch (cmd[1][1]) {
+                case 'i':
+                    intBuf = strToInt(cmd[2]);
                     printf("Finding this contact...");
-                    for (int i = 0; i < contactNumber; ++i) {
-                        if (strcmp(str, list[i].name) == 0) {
-                            printf("Found, deleting...");
-                            list=delContact(list,contactNumber,i);
-                            contactNumber--;
-                            printf("Finished.\n");
-                            goto command;
+                    for (int i = 0; i < contactNum; ++i) {
+                        if (list[i].number == intBuf) {
+                            printf("Found.\nDeleting...");
+                            list = delContact(list, contactNum, i);
+                            contactNum--;
+                            printf("Deleted.\n");
+                            goto Command;
                         }
-                   }
-                    error(3);
-                    goto command;
-                    break;
-             default:
-                    error(2);
-                    goto command;
-                    break;
-           }
-           break;
+                    }
+                    printf("Contact not found.\n");
+                    goto Command;
+                case 'n':
+                    printf("Finding this contact...");
+                    for (int i = 0; i < contactNum; ++i) {
+                        if (strcmp(list[i].name, cmd[2]) == 0) {
+                            printf("Found.\nDeleting...");
+                            list = delContact(list, contactNum, i);
+                            contactNum--;
+                            printf("Deleted.\n");
+                            goto Command;
+                        }
+                    }
+                    printf("Contact not found.\n");
+                    goto Command;
+                default:
+                    printf("Unknown argument.\nSyntax: del [-i|-n] [moreInfo]\n");
+                    goto Command;
+            }
         case 5:
             //info
-            switch (cmd[6]) {
-                case 'n'://name
-                    for (number = 8; cmd[number] != ' ' && cmd[number] != '\n' && cmd[number] != 0; ++number) ;
-                    strcut(str, cmd, 8, number);
+            if (argc < 2) {
+                printf("Syntax: info [-n|-p|-c|-l|-a] [moreInfo]\n");
+                goto Command;
+            }
+            switch (cmd[1][1]) {
+                case 'n':
+                    //name
+                    if (argc != 3) {
+                        printf("Syntax: info -n [name]\n");
+                        goto Command;
+                    }
                     printf("Finding this contact...");
-                    for (int i = 0; i < contactNumber; ++i) {
-                        if (strcmp(str, list[i].name) == 0) {
-                            printf("Found\n");
+                    for (int i = 0; i < contactNum; ++i) {
+                        if (strcmp(list[i].name, cmd[2]) == 0) {
+                            printf("Found.\n");
                             printContactInfo(list[i]);
-                            printf("\n");
-                            goto command;
+                            goto Command;
                         }
                     }
-                    error(3);
-                    goto command;
-                    break;
-                case 'p'://phone
-                    for (number = 8; cmd[number] != ' ' && cmd[number] != '\n' && cmd[number] != 0; ++number) ;
-                    strcut(str, cmd, 8, number);
+                    printf("Contact not found.\n");
+                    goto Command;
+                case 'p':
+                    //phone
+                    if (argc != 3) {
+                        printf("Syntax: info [-p] [phoneNumber]\n");
+                        goto Command;
+                    }
                     printf("Finding this contact...");
-                    for (int i = 0; i < contactNumber; ++i) {
-                        if (strcmp(str, list[i].phoneNumber) == 0) {
-                            printf("Found\n");
+                    for (int i = 0; i < contactNum; ++i) {
+                        if (strcmp(list[i].phoneNumber, cmd[2]) == 0) {
+                            printf("Found.\n");
                             printContactInfo(list[i]);
-                            printf("\n");
-                            goto command;
+                            goto Command;
                         }
                     }
-                    error(3);
-                    goto command;
-                    break;
-                case 'c'://class
-                    for (number = 8; cmd[number] != ' ' && cmd[number] != '\n' && cmd[number] != 0; ++number) ;
-                    strcut(str, cmd, 8, number);
-                    for (int i = 0; i < contactNumber; ++i) {
-                        if (strcmp(str, list[i].classInfo) == 0)
+                    printf("Contact not found.\n");
+                    goto Command;
+                case 'c':
+                    //class
+                    if (argc != 3) {
+                        printf("Syntax: info [-c] [classInformation]\n");
+                        goto Command;
+                    }
+                    for (int i = 0; i < contactNum; ++i) {
+                        if (strcmp(list[i].classInfo, cmd[2]) == 0)
                             printContactInfo(list[i]);
                     }
-                    printf("\n");
-                    goto command;
-                    break;
+                    goto Command;
                 case 'l':
-                    //leader
-                    for (int i = 0; i < contactNumber; ++i) {
-                        if (list[i].duty)
+                    //is leader
+                    for (int i = 0; i < contactNum; ++i) {
+                        if (list[i].duty != 0)
                             printContactInfo(list[i]);
                     }
-                    printf("\n");
-                    goto command;
-                    break;
+                    goto Command;
                 case 'a':
                     //all
-                    for (int i = 0; i < contactNumber; ++i)
+                    for (int i = 0; i < contactNum; ++i) {
                         printContactInfo(list[i]);
-                    printf("\n");
-                    goto command;
-                    break;
+                    }
+                    goto Command;
                 default:
-                    error(2);
-                    goto command;
-                    break;
+                    printf("Unknown argument.\nSyntax: info [-n|-p|-c|-l|-a] [moreInfo]\n");
+                    goto Command;
             }
-            break;
         case -1:
         default:
             error(2);
-            goto command;
-            break;
+            goto Command;
+            //unknown command
     }
 
     return 0;
@@ -255,30 +261,6 @@ void showEditHelpMenu() {
     printf("-----------------------------------command list-----------------------------------\n");
 }
 
-int cmdInterpreter(char *cmd) {
-    //finished
-    char buf[50];
-    int digit;
-    for (digit = 0; cmd[digit] != ' ' && cmd[digit] != 0; ++digit)
-        buf[digit]=cmd[digit];
-    buf[digit]=0;
-
-    if (strcmp(buf,"exit") == 0)
-        return 0;
-    else if (strcmp(buf,"help") == 0)
-        return 1;
-    else if (strcmp(buf,"add") == 0)
-        return 2;
-    else if (strcmp(buf,"edit") == 0)
-        return 3;
-    else if (strcmp(buf,"del") == 0)
-        return 4;
-    else if (strcmp(buf,"info") == 0)
-        return 5;
-    else
-        return -1;
-}
-
 void error(int n) {
     //finished
     switch (n) {
@@ -294,6 +276,60 @@ void error(int n) {
         default:
             break;
     }
+}
+
+int cmdInterpreter(char cmd[][100], char source[]) {
+    //finished
+    int argc = 0, digit, cmdDigit;
+    while (source[0] == '\n' || source[0] == ' ') {
+        digit = 0;
+        while (digit < strlen(source)) {
+            source[digit] = source[digit + 1];
+            digit++;
+        }
+    }
+    if (strlen(source) < 1)
+        return 0;
+    while (source[strlen(source) - 1] == ' ') {
+        source[strlen(source) - 1] = 0;
+    }
+    digit = 0;
+    cmdDigit = 0;
+    while (digit < strlen(source)) {
+        if (source[digit] != ' ') {
+            cmd[argc][cmdDigit] = source[digit];
+            cmdDigit++;
+        } else {
+            if (source[digit - 1] == ' ') {
+                digit++;
+                continue;
+            }
+            cmd[argc][cmdDigit] = 0;
+            cmdDigit = 0;
+            argc++;
+        }
+        digit++;
+    }
+    cmd[argc][cmdDigit] = 0;
+    argc++;
+    return argc;
+}
+
+int cmdInterpreter0(char *cmd) {
+    if (strcmp(cmd, "help") == 0)
+        return 1;
+    else if (strcmp(cmd, "add") == 0)
+        return 2;
+    else if (strcmp(cmd, "edit") == 0)
+        return 3;
+    else if (strcmp(cmd, "del") == 0)
+        return 4;
+    else if (strcmp(cmd, "info") == 0)
+        return 5;
+    else if (strcmp(cmd, "exit") == 0)
+        return 0;
+    else
+        return -1;
 }
 
 Property readPropertyFromFile(FILE *fp) {
@@ -356,7 +392,7 @@ Contact getContactFromKeyboard() {
     //finished
     Contact newContact;
     int counter=0;
-    char cmd;
+    char cmd, buffer[101];
     printf("Number>");
     scanf("%d",&newContact.number);
     printf("Name>");
@@ -369,16 +405,27 @@ Contact getContactFromKeyboard() {
     scanf("%d",&newContact.duty);
     printf("Phone>");
     scanf("%s",newContact.phoneNumber);
+    Email:
     printf("Email>");
-    scanf("%s",newContact.email);
+    scanf("%s", buffer);
+    switch (emailCheck(buffer)) {
+        case 1:
+            printf("Email too long, shorter than 30 chars. Enter again.\n");
+            goto Email;
+        case 2:
+            printf("Too many \'@\', please check your input.\n");
+            goto Email;
+        case 0:
+            strcpy(newContact.email, buffer);
+    }
     printf("Add other properties? [Y/N]>");
     getchar();
     cmd=getchar();
     getchar();
     while (cmd == 'Y' || cmd == 'y') {
-        printf("Property name>");
+        printf("Property name, [SPACE] is not allowed>");
         scanf("%s",newContact.other.name[counter]);
-        printf("Property contain>");
+        printf("Property contain, [SPACE] is not allowed>");
         scanf("%s",newContact.other.consist[counter]);
         counter++;
         printf("Add another? [Y/N]>");
@@ -421,12 +468,6 @@ int strToInt(char *str) {
     }
     return res;
 }
-void strcut(char *dest, char *source, int start, int over) {
-    //finished
-    for (int i = 0; i+start < over; ++i) {
-        dest[i] = source[i+start];
-    }
-}
 
 void printContactInfo(Contact buf) {
     //finished
@@ -464,10 +505,12 @@ Contact *delContact(Contact *list, int contactNumber, int digit) {
 
 void contactEditor(Contact *buf) {
     //finished
-    char cmd[100];
+    char cmd[100], buffer[101], strBuf[10][100];
     command:
     printf("What do you want to edit? Use \"help\" for help>");
-    scanf("%s",cmd);
+    gets(cmd);
+    cmdInterpreter(strBuf, cmd);
+    strcpy(cmd, strBuf[0]);
     if (strcmp(cmd,"number") == 0) {
         printf("Input new number>");
         scanf("%d",&buf->number);
@@ -488,6 +531,19 @@ void contactEditor(Contact *buf) {
         scanf("%s",buf->phoneNumber);
     } else if (strcmp(cmd,"email") == 0) {
         printf("Input new email>");
+        Email:
+        printf("Email>");
+        scanf("%s", buffer);
+        switch (emailCheck(buffer)) {
+            case 1:
+                printf("Email too long, shorter than 30 chars. Enter again.\n");
+                goto Email;
+            case 2:
+                printf("Too many \'@\', please check your input.\n");
+                goto Email;
+            case 0:
+                strcpy(buf->email, buffer);
+        }
         scanf("%s",buf->email);
     } else if (strcmp(cmd,"other") == 0) {
         propertyEditor(&(buf->other));
@@ -503,15 +559,36 @@ void contactEditor(Contact *buf) {
 
 void propertyEditor(Property *other) {
     //finished
-    char cmd[100];
+    char cmd[100], strBuf[10][100];
     command:
-    printf("Input what to edit. Use \"list\" to see the list of other properties, use\"exit\" to exit>");
-    scanf("%s",cmd);
+    printf(R"(Input what to edit. Or use "list" to see the list of other properties,use "del" to delete a property, use"exit" to exit>)");
+    gets(cmd);
+    cmdInterpreter(strBuf, cmd);
+    strcpy(cmd, strBuf[0]);
     if (strcmp(cmd,"list") == 0) {
         for (int i = 0; i < other->num; ++i)
             printf("[%s] %s\n",other->name[i],other->consist[i]);
     } else if (strcmp(cmd,"exit") == 0) {
         return;
+    } else if (strcmp(cmd, "del") == 0) {
+        printf("Input property name to delete it>");
+        gets(cmd);
+        cmdInterpreter(strBuf, cmd);
+        strcpy(cmd, strBuf[0]);
+        printf("Finding...");
+        for (int i = 0; i < other->num; ++i) {
+            if (strcmp(other->name[i], cmd) == 0) {
+                printf("Found.\nDeleting...");
+                for (int j = i; j < other->num - 1; ++j) {
+                    strcpy(other->name[j], other->name[j + 1]);
+                    strcpy(other->consist[j], other->consist[j + 1]);
+                }
+                other->num--;
+                printf("Deleted.\n");
+                goto command;
+            }
+        }
+        printf("Property not found.\n");
     } else {
         for (int i = 0; i < other->num; ++i) {
             if (strcmp(cmd,other->name[i]) == 0) {
@@ -523,4 +600,20 @@ void propertyEditor(Property *other) {
         printf("Unknown command.\n");
     }
     goto command;
+}
+
+int emailCheck(char *email) {
+    //finished
+    int at = 0, len= strlen(email);
+    if (strlen(email) > 30)
+        return 1;
+    for (int i = 0; i < len; ++i) {
+        if (email[i] == '@')
+            at++;
+        //to many '@'
+        if (at >= 2)
+            return 2;
+    }
+    //Email is legal
+    return 0;
 }
